@@ -1,6 +1,7 @@
 import asyncio
 import importlib.util
 import logging
+import threading
 import warnings
 from dataclasses import dataclass
 from functools import lru_cache
@@ -169,23 +170,35 @@ class GeminiChatModel:
             return
 
         prompt = _messages_to_prompt(messages_or_text)
+        queue: asyncio.Queue[Any] = asyncio.Queue()
+        done = object()
+        loop = asyncio.get_running_loop()
 
-        def _stream_text_chunks() -> list[str]:
-            client = get_genai_client()
-            text_chunks: list[str] = []
-            for chunk in client.models.generate_content_stream(
-                model=self.model,
-                contents=prompt,
-                config=self._config(),
-            ):
-                text = _extract_text_from_chunk(chunk)
-                if text:
-                    text_chunks.append(text)
-            return text_chunks
+        def _producer() -> None:
+            try:
+                client = get_genai_client()
+                for chunk in client.models.generate_content_stream(
+                    model=self.model,
+                    contents=prompt,
+                    config=self._config(),
+                ):
+                    text = _extract_text_from_chunk(chunk)
+                    if text:
+                        loop.call_soon_threadsafe(queue.put_nowait, text)
+            except Exception as exc:
+                loop.call_soon_threadsafe(queue.put_nowait, exc)
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, done)
 
-        chunks = await asyncio.to_thread(_stream_text_chunks)
-        for chunk_text in chunks:
-            yield LLMResponse(content=chunk_text)
+        threading.Thread(target=_producer, daemon=True).start()
+
+        while True:
+            item = await queue.get()
+            if item is done:
+                break
+            if isinstance(item, Exception):
+                raise item
+            yield LLMResponse(content=str(item))
 
 
 class GeminiEmbeddings(Embeddings):
