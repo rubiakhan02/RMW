@@ -119,7 +119,6 @@ async function sendMessage() {
                         
                         if (data.final) {
                             // Final answer received
-                           // flushQueuedWords();
                             fullAnswer = data.answer || fullAnswer;
                             botMessageDiv.textContent = fullAnswer;
                             scrollChatToBottom();

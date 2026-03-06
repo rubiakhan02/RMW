@@ -5,7 +5,7 @@ import logging
 import re
 from typing import Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from app.models.chat import ChatRequest, ChatResponse
@@ -30,6 +30,11 @@ MAX_CACHE_ENTRIES = 200
 # Website URL for web search
 WEBSITE_URL = "https://ritzmediaworld.com"
 CHAT_TIMEOUT_SECONDS = 20.0
+SSE_HEADERS = {
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+    "X-Accel-Buffering": "no",
+}
 
 
 def get_cache_key(message: str, developer_context: str = "") -> str:
@@ -67,12 +72,19 @@ class MessageResponse(BaseModel):
 
 # ================= NEW ENDPOINT WITH INTENT DETECTION =================
 @router.post("/message", response_model=MessageResponse)
-async def message_endpoint(req: MessageRequest) -> MessageResponse:
+async def message_endpoint(
+    req: MessageRequest,
+    request: Request,
+    stream: bool = False,
+):
     """
     POST /v1/message — Intent detection + RAG chat
     Handles intent detection and returns structured response
     """
     try:
+        accept_header = (request.headers.get("accept") or "").lower()
+        if stream or "text/event-stream" in accept_header:
+            return await message_stream_endpoint(req)
         logger.info(f"📨 /v1/message received: {req.message[:80]}")
         
         # Check if intent engine can handle it
@@ -377,6 +389,20 @@ async def message_stream_endpoint(req: MessageRequest):
     Includes web search from ritzmediaworld.com
     """
     try:
+        cache_key = get_cache_key(req.message, req.developer_context or "")
+        if cache_key in _cache:
+            cached_answer = _extract_answer_from_cache(_cache[cache_key])
+
+            async def cache_stream():
+                for word in _iter_word_chunks(cached_answer):
+                    yield f"data: {json.dumps({'chunk': word})}\n\n"
+                yield f"data: {json.dumps({'final': True, 'answer': cached_answer})}\n\n"
+
+            return StreamingResponse(
+                cache_stream(),
+                media_type="text/event-stream",
+                headers=SSE_HEADERS,
+            )
         logger.info(f"📨 /v1/message/stream received: {req.message[:80]}")
         
         # Check intent engine first (for quick responses)
@@ -395,11 +421,7 @@ async def message_stream_endpoint(req: MessageRequest):
             return StreamingResponse(
                 intent_stream(),
                 media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                    "X-Accel-Buffering": "no"
-                }
+                headers=SSE_HEADERS,
             )
         
         # No intent match - use RAG streaming with web search
@@ -408,11 +430,7 @@ async def message_stream_endpoint(req: MessageRequest):
         return StreamingResponse(
             stream_rag_response(req.message, req.developer_context or ""),
             media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no"
-            }
+            headers=SSE_HEADERS,
         )
         
     except Exception as e:
