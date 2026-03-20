@@ -40,6 +40,33 @@ app.add_middleware(
 # Serve static files from the "static" directory
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
+
+def _warmup_runtime_dependencies() -> None:
+    """
+    Preload heavy runtime dependencies once at startup so the first
+    real chat request does less work on the critical path.
+    """
+    try:
+        from app.rag.vectorstore import get_retriever
+
+        get_retriever(k=3)
+        log.info("Warmup complete: retriever loaded")
+    except Exception as exc:
+        log.warning("Warmup skipped for retriever: %s", exc)
+
+    try:
+        from app.utils.genai_adapter import get_genai_client
+
+        get_genai_client()
+        log.info("Warmup complete: Gemini client initialized")
+    except Exception as exc:
+        log.warning("Warmup skipped for Gemini client: %s", exc)
+
+
+@app.on_event("startup")
+async def startup_warmup() -> None:
+    _warmup_runtime_dependencies()
+
 # Add middleware to catch and print ALL errors
 @app.middleware("http")
 async def catch_exceptions_middleware(request: Request, call_next):

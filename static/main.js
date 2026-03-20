@@ -65,6 +65,7 @@ async function sendMessage() {
         botMessageDiv.textContent += `\n\n⏳ Taking longer than usual. Try asking about a specific service like 'Digital Marketing' for an instant answer, or contact us directly:\n📞 ${contactInfo.phone}`;
     }, chatConfig.timeout_ms || 12000);
 
+    
     try {
         // Call streaming endpoint
         const res = await fetch('/v1/message/stream', {
