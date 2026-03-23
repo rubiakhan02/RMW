@@ -4,6 +4,12 @@ let contactInfo = {};
 let formSchema = {};
 const developerContext = (window.RMW_DEV_CONTEXT || "").trim();
 const leadApiBase = '/v1/submit-lead';
+const SpeechRecognitionApi = window.SpeechRecognition || window.webkitSpeechRecognition;
+let speechRecognition = null;
+let isListening = false;
+let finalTranscript = '';
+let interimTranscript = '';
+let shouldSendAfterListening = false;
 
 function getTimeoutMessage() {
     const phone = contactInfo.phone || '+91-7290002168';
@@ -45,6 +51,152 @@ loadChatConfig();
 
 // ================= CHAT STATE =================
 let chatHistory = [];
+
+function getVoiceButtonIconMarkup(isActive = false) {
+    return `
+        <span class="voice-input-icon" aria-hidden="true">
+            <svg class="voice-icon-svg${isActive ? ' active' : ''}" viewBox="0 0 64 64" focusable="false">
+                <defs>
+                    <linearGradient id="voiceGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#ffd2f3"></stop>
+                        <stop offset="55%" stop-color="#ff61cf"></stop>
+                        <stop offset="100%" stop-color="#c2188f"></stop>
+                    </linearGradient>
+                    <filter id="voiceGlow" x="-50%" y="-50%" width="200%" height="200%">
+                        <feGaussianBlur stdDeviation="2.4" result="blur"></feGaussianBlur>
+                        <feMerge>
+                            <feMergeNode in="blur"></feMergeNode>
+                            <feMergeNode in="SourceGraphic"></feMergeNode>
+                        </feMerge>
+                    </filter>
+                </defs>
+                <g filter="url(#voiceGlow)">
+                    <rect x="24" y="8" width="16" height="28" rx="8" fill="url(#voiceGradient)" stroke="#9c136f" stroke-width="2"></rect>
+                    <path d="M18 31v3c0 7.7 6.3 14 14 14s14-6.3 14-14v-3" fill="none" stroke="#ff7ad9" stroke-width="5" stroke-linecap="round"></path>
+                    <path d="M18 31v3c0 7.7 6.3 14 14 14s14-6.3 14-14v-3" fill="none" stroke="#9c136f" stroke-width="2" stroke-linecap="round"></path>
+                    <path d="M32 48v7" fill="none" stroke="#9c136f" stroke-width="3" stroke-linecap="round"></path>
+                    <rect x="22" y="55" width="20" height="5" rx="2.5" fill="url(#voiceGradient)" stroke="#9c136f" stroke-width="2"></rect>
+                    <circle cx="28" cy="16" r="3" fill="#fff3fb"></circle>
+                    <path d="M26 22c0-3 1.8-6 4.5-7.8" fill="none" stroke="#fff3fb" stroke-width="3" stroke-linecap="round"></path>
+                    ${isActive ? '<circle cx="50" cy="14" r="4" fill="#ffd84f"></circle>' : ''}
+                </g>
+            </svg>
+        </span>
+    `;
+}
+
+function updateVoiceInputField() {
+    const input = document.getElementById('user-input');
+    if (!input) return;
+
+    const spokenText = `${finalTranscript} ${interimTranscript}`.trim();
+    input.value = spokenText;
+
+    if (isListening) {
+        input.placeholder = spokenText ? 'Listening...' : 'Listening, speak now...';
+    } else {
+        input.placeholder = 'Ask me anything...';
+    }
+}
+
+function resetVoiceTranscriptState() {
+    finalTranscript = '';
+    interimTranscript = '';
+    shouldSendAfterListening = false;
+    updateVoiceInputField();
+}
+
+function setVoiceButtonState(listening) {
+    const voiceButton = document.getElementById('voice-input-btn');
+    if (!voiceButton) return;
+
+    voiceButton.classList.toggle('is-listening', listening);
+    voiceButton.setAttribute('aria-pressed', listening ? 'true' : 'false');
+    voiceButton.title = listening ? 'Listening...' : 'Speak your message';
+    voiceButton.innerHTML = getVoiceButtonIconMarkup(listening);
+}
+
+function initializeVoiceInput() {
+    const voiceButton = document.getElementById('voice-input-btn');
+    const input = document.getElementById('user-input');
+
+    if (!voiceButton || !input) return;
+
+    if (!SpeechRecognitionApi) {
+        voiceButton.disabled = true;
+        voiceButton.title = 'Voice input is not supported in this browser';
+        return;
+    }
+
+    speechRecognition = new SpeechRecognitionApi();
+    speechRecognition.lang = 'en-US';
+    speechRecognition.interimResults = true;
+    speechRecognition.continuous = true;
+    speechRecognition.maxAlternatives = 1;
+
+    speechRecognition.addEventListener('start', () => {
+        isListening = true;
+        finalTranscript = '';
+        interimTranscript = '';
+        setVoiceButtonState(true);
+        updateVoiceInputField();
+    });
+
+    speechRecognition.addEventListener('end', () => {
+        isListening = false;
+        setVoiceButtonState(false);
+
+        const transcriptToSend = `${finalTranscript} ${interimTranscript}`.trim();
+        updateVoiceInputField();
+
+        if (shouldSendAfterListening && transcriptToSend) {
+            shouldSendAfterListening = false;
+            sendMessage();
+            resetVoiceTranscriptState();
+            return;
+        }
+
+        shouldSendAfterListening = false;
+    });
+
+    speechRecognition.addEventListener('result', (event) => {
+        interimTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i += 1) {
+            const result = event.results[i];
+            const transcript = result?.[0]?.transcript?.trim();
+            if (!transcript) continue;
+
+            if (result.isFinal) {
+                finalTranscript = `${finalTranscript} ${transcript}`.trim();
+            } else {
+                interimTranscript = `${interimTranscript} ${transcript}`.trim();
+            }
+        }
+
+        updateVoiceInputField();
+    });
+
+    speechRecognition.addEventListener('error', (event) => {
+        console.error('Voice input error:', event.error);
+        shouldSendAfterListening = false;
+    });
+
+    voiceButton.addEventListener('click', () => {
+        if (isListening) {
+            shouldSendAfterListening = true;
+            speechRecognition.stop();
+            return;
+        }
+
+        try {
+            resetVoiceTranscriptState();
+            speechRecognition.start();
+        } catch (err) {
+            console.error('Unable to start voice input:', err);
+        }
+    });
+}
 
 // Streaming version of sendMessage
 async function sendMessage() {
@@ -456,6 +608,7 @@ document.getElementById('user-input')
 
 // ================= AUTO WELCOME =================
 window.addEventListener("load", async () => {
+    initializeVoiceInput();
     try {
         // Load welcome message from backend
         const welcomeRes = await fetch('/v1/welcome');
