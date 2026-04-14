@@ -329,7 +329,12 @@ def _next_step_answer() -> str:
 
 
 def _pricing_enquiry_answer() -> str:
-    return "To know about pricing, please fill the enquiry form to contact our team."
+    return (
+        "To know about pricing detail please fill the enquiry form to connect with our team.\n\n"
+        "For more details or to discuss your unique needs, you can contact us:\n"
+        "📞 +91-7290002168\n"
+        "📧 info@ritzmediaworld.com"
+    )
 
 
 def _is_brand_work_query(question: str) -> bool:

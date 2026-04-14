@@ -47,6 +47,33 @@ def _timeout_answer() -> str:
     )
 
 
+def _is_pricing_query(message: str) -> bool:
+    q = (message or "").lower()
+    pricing_keywords = (
+        "pricing",
+        "price",
+        "cost",
+        "charge",
+        "charges",
+        "fee",
+        "fees",
+        "how much",
+        "quotation",
+        "quote",
+        "budget",
+    )
+    return any(keyword in q for keyword in pricing_keywords)
+
+
+def _pricing_enquiry_answer() -> str:
+    return (
+        "To know about pricing detail please fill the enquiry form to connect with our team.\n\n"
+        "For more details or to discuss your unique needs, you can contact us:\n"
+        "📞 +91-7290002168\n"
+        "📧 info@ritzmediaworld.com"
+    )
+
+
 def get_cache_key(message: str, developer_context: str = "") -> str:
     raw = f"{message.strip().lower()}|{(developer_context or '').strip().lower()}"
     return hashlib.md5(raw.encode()).hexdigest()
@@ -96,6 +123,16 @@ async def message_endpoint(
         if stream or "text/event-stream" in accept_header:
             return await message_stream_endpoint(req)
         logger.info(f"ðŸ“¨ /v1/message received: {req.message[:80]}")
+
+        if _is_pricing_query(req.message):
+            answer = _pricing_enquiry_answer()
+            return MessageResponse(
+                answer=answer,
+                intent="general",
+                show_lead_form=False,
+                follow_up=None,
+                enquiry_message=None,
+            )
         
         # Check if intent engine can handle it
         intent_response = get_intent_response(req.message)
@@ -409,6 +446,20 @@ async def message_stream_endpoint(req: MessageRequest):
                 headers=SSE_HEADERS,
             )
         logger.info(f"ðŸ“¨ /v1/message/stream received: {req.message[:80]}")
+
+        if _is_pricing_query(req.message):
+            answer = _pricing_enquiry_answer()
+
+            async def pricing_stream():
+                for word in _iter_word_chunks(answer):
+                    yield f"data: {json.dumps({'chunk': word})}\n\n"
+                yield f"data: {json.dumps({'final': True, 'answer': answer})}\n\n"
+
+            return StreamingResponse(
+                pricing_stream(),
+                media_type="text/event-stream",
+                headers=SSE_HEADERS,
+            )
         
         # Check intent engine first (for quick responses)
         intent_response = get_intent_response(req.message)
