@@ -24,6 +24,8 @@ app = FastAPI(
     title="Strict RAG Chatbot API",
     version="0.1.0",
     debug=settings.DEBUG,
+
+    
 )
 
 allowed_origins = settings.allowed_origins_list()

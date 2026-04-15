@@ -396,7 +396,12 @@ def get_intent_response(message: str) -> Dict[str, Any]:
     elif intent["type"] == "pricing_contact":
         logger.info(f"💰 Pricing/contact intent detected")
         return {
-            "answer": "Our pricing is fully customized based on your goals and industry. Let me connect you with our team for a detailed proposal 👇",
+            "answer": (
+                "To know about pricing, please fill the enquiry form.\n"
+                "To connect directly with our team, please contact Ritz Media World directly:\n"
+                "Phone: +91-7290002168\n"
+                "Email: info@ritzmediaworld.com"
+            ),
             "intent": "pricing_contact",
             "show_lead_form": True,
             "follow_up": None,

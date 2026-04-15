@@ -65,7 +65,12 @@ async def get_follow_up_messages():
     return FollowUpMessageResponse(
         sub_service="Want to discuss your specific needs? I can connect you with our team 👇",
         services_list="Which service interests you the most? Just type the name (like 'Digital Marketing' or 'Creative Services') and I'll share the details! 😊",
-        pricing_contact="Our pricing is fully customized based on your goals and industry. Let me connect you with our team for a detailed proposal 👇",
+        pricing_contact=(
+            "To know about pricing, please fill the enquiry form.\n"
+            "To connect directly with our team, please contact Ritz Media World directly:\n"
+            "Phone: +91-7290002168\n"
+            "Email: info@ritzmediaworld.com"
+        ),
         general_error="⏳ Taking longer than usual. Try asking about a specific service like 'Digital Marketing' for an instant answer, or contact us directly:\n📞 +91-7290002168"
     )
 

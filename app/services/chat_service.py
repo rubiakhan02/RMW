@@ -276,6 +276,12 @@ def _is_pricing_query(question: str) -> bool:
         "quotation",
         "quote",
         "budget",
+        "rate",
+        "rates",
+        "package",
+        "packages",
+        "plan",
+        "plans",
     )
     return any(keyword in q for keyword in pricing_keywords)
 
@@ -330,10 +336,10 @@ def _next_step_answer() -> str:
 
 def _pricing_enquiry_answer() -> str:
     return (
-        "To know about pricing detail please fill the enquiry form to connect with our team.\n\n"
-        "For more details or to discuss your unique needs, you can contact us:\n"
-        "📞 +91-7290002168\n"
-        "📧 info@ritzmediaworld.com"
+        "To know about pricing, please fill the enquiry form.\n"
+        "To connect directly with our team, please contact Ritz Media World directly:\n"
+        "Phone: +91-7290002168\n"
+        "Email: info@ritzmediaworld.com"
     )
 
 
